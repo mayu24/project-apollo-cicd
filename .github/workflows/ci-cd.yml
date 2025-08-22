@@ -1,6 +1,6 @@
 name: CI/CD (with Trivy & Environments)
 
-@on:
+on:
   push:
     branches:
       - main
