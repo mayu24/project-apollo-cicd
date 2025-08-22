@@ -1,21 +1,19 @@
-# Use slim Python image
+# Use Python 3.11 slim image
 FROM python:3.11-slim
 
 # Set working directory
 WORKDIR /app
 
-# Copy requirements and install dependencies
+# Copy requirements and install
 COPY app/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy app code
-COPY . .
+# Copy application
+COPY app/ ./app
 
-# Cloud Run expects app to listen on PORT env variable
+# Expose port for Cloud Run / GKE
 ENV PORT=8080
-
-# Expose port for container
 EXPOSE 8080
 
-# Run FastAPI with uvicorn
-CMD ["python", "main.py"]
+# Run the app
+CMD ["python", "app/main.py"]
