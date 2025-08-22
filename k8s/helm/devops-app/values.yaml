@@ -1,9 +1,10 @@
+replicaCount: 3
 
-replicaCount: 1
 image:
-  repository: REPLACE_WITH_REPO
-  tag: latest
+  repository: ""
+  tag: ""
+
 service:
   type: LoadBalancer
   port: 80
-  targetPort: 8000
+  targetPort: 8080
