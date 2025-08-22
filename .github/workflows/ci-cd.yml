@@ -33,16 +33,21 @@ jobs:
         run: |
           pip install -r app/requirements.txt
           python -m pytest -q || true
+      
       - name: Authenticate to GCP using Service Account Key
         uses: google-github-actions/auth@v1
         with:
           credentials_json: ${{ secrets.GCP_SA_KEY }}
 
-
       - name: Configure gcloud
         uses: google-github-actions/setup-gcloud@v2
         with:
           project_id: ${{ vars.GCP_PROJECT_ID }}
+
+      - name: Cheking Veriable
+        run: |
+          echo ${{ vars.GCP_PROJECT_ID }}
+          
 
       - name: Docker build
         run: |
