@@ -47,6 +47,7 @@ jobs:
       - name: Docker build & push
         id: set-image
         run: |
+          gcloud auth configure-docker asia-south1-docker.pkg.dev
           IMAGE="${GCP_LOCATION}-docker.pkg.dev/${GCP_PROJECT_ID}/${AR_REPO}/devops-app:${GITHUB_SHA}"
           echo "IMAGE=$IMAGE" >> "$GITHUB_OUTPUT"
           docker build -t "$IMAGE" .
