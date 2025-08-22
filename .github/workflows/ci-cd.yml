@@ -46,8 +46,11 @@ jobs:
 
       - name: Cheking Veriable
         run: |
-          echo ${{ vars.GCP_PROJECT_ID }}
-          
+          echo $GCP_PROJECT_ID
+          echo $REGION
+          echo $AR_REPO
+          echo $GCP_LOCATION
+         
 
       - name: Docker build
         run: |
