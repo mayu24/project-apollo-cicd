@@ -36,11 +36,12 @@ jobs:
           pip install -r app/requirements.txt
           python -m pytest -q || true
 
-      - name: Authenticate to GCP (OIDC)
-        uses: google-github-actions/auth@v2
+      - name: Authenticate to GCP using Service Account Key
+        uses: google-github-actions/setup-gcloud@v2
         with:
-          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
-          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT_EMAIL }}
+          service_account_key: ${{ secrets.GCP_SA_KEY }}
+          project_id: ${{ vars.GCP_PROJECT_ID }}
+
 
       - name: Configure gcloud
         uses: google-github-actions/setup-gcloud@v2
