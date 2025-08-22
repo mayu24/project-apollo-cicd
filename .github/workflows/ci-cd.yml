@@ -14,6 +14,7 @@ env:
   AR_REPO: "apps"
   GCP_LOCATION: "asia-south1"
   GCP_PROJECT_ID: "durable-rhythm-465310-i5"
+  GKE_CLUSTER_NAME_DEV: dev
 
 jobs:
   build:
@@ -106,6 +107,7 @@ jobs:
           project_id: ${{ env.GCP_PROJECT_ID }}
           cluster_name: ${{ env.GKE_CLUSTER_NAME_DEV }}
           location: ${{ env.REGION }}
+          
       - name: Deploy (Helm)
         run: |
           helm upgrade --install devops-app k8s/helm/devops-app \
