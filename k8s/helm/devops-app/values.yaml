@@ -1,8 +1,8 @@
 replicaCount: 3
 
 image:
-  repository: "asia-south1-docker.pkg.dev/durable-rhythm-465310-i5/apps/devops-app"
-  tag: "47ba670e1f65fd485d6128f06a91e54c3223b2dd"
+  fullName: ""   # will be overridden by workflow
+
 
 service:
   type: LoadBalancer
