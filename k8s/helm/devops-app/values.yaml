@@ -1,0 +1,9 @@
+
+replicaCount: 1
+image:
+  repository: REPLACE_WITH_REPO
+  tag: latest
+service:
+  type: LoadBalancer
+  port: 80
+  targetPort: 8000

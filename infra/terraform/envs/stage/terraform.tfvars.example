@@ -1,0 +1,6 @@
+
+project_id = "YOUR_STAGE_PROJECT_ID"
+region = "asia-south1"
+location = "asia-south1"
+repo_name = "apps"
+cluster_name = "stage-autopilot"
