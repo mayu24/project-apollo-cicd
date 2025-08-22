@@ -12,6 +12,7 @@ env:
   REGION: "asia-south1"
   AR_REPO: "apps"
   GCP_LOCATION: "asia-south1"
+  GCP_PROJECT_ID: "durable-rhythm-465310-i5"
 
 run-name: Devops
 
