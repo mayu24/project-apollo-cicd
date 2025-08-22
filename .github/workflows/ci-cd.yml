@@ -12,7 +12,7 @@ on:
 env:
   REGION: "asia-south1"
   AR_REPO: "apps"
-  GCP_PROJECT_ID: "my-gcp-project"       # <-- Replace with your project ID
+  GCP_PROJECT_ID: "durable-rhythm-465310-i5"       # <-- Replace with your project ID
   GCP_LOCATION: "asia-south1"
 
 run-name: DevOps Pipeline
