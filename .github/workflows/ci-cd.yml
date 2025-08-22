@@ -10,9 +10,12 @@ on:
   pull_request:
     branches: [ main ]
 
+
 env:
   REGION: "asia-south1"
   AR_REPO: "apps"
+
+  run-name:  Devops-Pipeline
 
 jobs:
   build:
