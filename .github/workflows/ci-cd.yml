@@ -108,12 +108,14 @@ jobs:
           cluster_name: ${{ env.GKE_CLUSTER_NAME_DEV }}
           location: ${{ env.REGION }}
           
-      - name: Deploy (Helm)
+      - name: Docker build & push
+        id: set-image
         run: |
-          helm upgrade --install devops-app k8s/helm/devops-app \
-            --set image.repository=${{ needs.build.outputs.IMAGE }} \
-            --set image.tag=${GITHUB_SHA} \
-            --namespace dev --create-namespace
+          gcloud auth configure-docker ${GCP_LOCATION}-docker.pkg.dev
+          IMAGE="${GCP_LOCATION}-docker.pkg.dev/${GCP_PROJECT_ID}/${AR_REPO}/devops-app:${GITHUB_SHA}"
+          docker build -t "$IMAGE" .
+          docker push "$IMAGE"
+          echo "image=$IMAGE" >> "$GITHUB_OUTPUT"
 
   deploy-stage:
     needs: trivy-scan
