@@ -8,19 +8,18 @@ on:
       - dev
   pull_request:
     branches: [ main ]
+
 env:
   REGION: "asia-south1"
   AR_REPO: "apps"
   GCP_LOCATION: "asia-south1"
   GCP_PROJECT_ID: "durable-rhythm-465310-i5"
 
-run-name: Devops
-
 jobs:
   build:
     runs-on: ubuntu-latest
     outputs:
-      image: ${{ steps.set-image.outputs.image }}
+      image: ${{ steps.set-image.outputs.IMAGE }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -34,30 +33,24 @@ jobs:
         run: |
           pip install -r app/requirements.txt
           python -m pytest -q || true
-      
-      - name: Authenticate to GCP using Service Account Key
+
+      - name: Authenticate to GCP
         uses: google-github-actions/auth@v1
         with:
           credentials_json: ${{ secrets.GCP_SA_KEY }}
 
-      - name: Configure gcloud
+      - name: Configure gcloud CLI
         uses: google-github-actions/setup-gcloud@v2
         with:
-          project_id: ${{ vars.GCP_PROJECT_ID }}
-
-      - name: Cheking Veriable
-        run: |
-          echo $GCP_PROJECT_ID
-          echo $REGION
-          echo $AR_REPO
-          echo $GCP_LOCATION
-         
-      - name: Docker build
-        run: |
-          IMAGE="$GCP_LOCATION-docker.pkg.dev/$GCP_PROJECT_ID/$AR_REPO/devops-app:${{ github.sha }}"
-          docker build -t "$IMAGE" .
-          echo "IMAGE=$IMAGE" >> $GITHUB_OUTPUT
+          project_id: ${{ env.GCP_PROJECT_ID }}
+    
+      - name: Docker build & push
         id: set-image
+        run: |
+          IMAGE="${GCP_LOCATION}-docker.pkg.dev/${GCP_PROJECT_ID}/${AR_REPO}/devops-app:${GITHUB_SHA}"
+          echo "IMAGE=$IMAGE" >> "$GITHUB_OUTPUT"
+          docker build -t "$IMAGE" .
+          docker push "$IMAGE"
 
   trivy-scan:
     needs: build
@@ -66,14 +59,21 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Authenticate to GCP (Docker)
+        run: |
+          echo "${{ secrets.GCP_SA_KEY }}" > sa-key.json
+          gcloud auth activate-service-account --key-file=sa-key.json
+          gcloud auth configure-docker "${GCP_LOCATION}-docker.pkg.dev"
+
       - name: Run Trivy vulnerability scan
         uses: aquasecurity/trivy-action@0.28.0
         with:
-          image-ref: ${{ needs.build.outputs.image }}
+          image-ref: ${{ needs.build.outputs.IMAGE }}
           format: 'table'
           exit-code: '1'
           severity: 'CRITICAL,HIGH'
           ignore-unfixed: true
+          driver: 'docker'
 
   deploy-dev:
     needs: trivy-scan
@@ -82,24 +82,27 @@ jobs:
     environment: dev
     steps:
       - uses: actions/checkout@v4
-      - name: Authenticate to GCP (OIDC)
-        uses: google-github-actions/auth@v2
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@v1
         with:
-          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
-          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT_EMAIL }}
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
       - name: Configure gcloud
         uses: google-github-actions/setup-gcloud@v2
         with:
-          project_id: ${{ vars.GCP_PROJECT_ID }}
+          project_id: ${{ env.GCP_PROJECT_ID }}
       - name: Get GKE credentials
         uses: google-github-actions/get-gke-credentials@v2
         with:
-          project_id: ${{ vars.GCP_PROJECT_ID }}
-          cluster_name: ${{ vars.GKE_CLUSTER_NAME_DEV }}
-          location: ${{ vars.GCP_REGION }}
+          project_id: ${{ env.GCP_PROJECT_ID }}
+          cluster_name: ${{ env.GKE_CLUSTER_NAME_DEV }}
+          location: ${{ env.REGION }}
       - name: Deploy (Helm)
         run: |
-          helm upgrade --install devops-app k8s/helm/devops-app             --set image.repository=${{ needs.build.outputs.image }}             --set image.tag=${{ github.sha }}             --namespace dev --create-namespace
+          helm upgrade --install devops-app k8s/helm/devops-app \
+            --set image.repository=${{ needs.build.outputs.IMAGE }} \
+            --set image.tag=${GITHUB_SHA} \
+            --namespace dev --create-namespace
+
   deploy-stage:
     needs: trivy-scan
     runs-on: ubuntu-latest
@@ -107,24 +110,27 @@ jobs:
     environment: staging
     steps:
       - uses: actions/checkout@v4
-      - name: Authenticate to GCP (OIDC)
-        uses: google-github-actions/auth@v2
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@v1
         with:
-          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
-          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT_EMAIL }}
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
       - name: Configure gcloud
         uses: google-github-actions/setup-gcloud@v2
         with:
-          project_id: ${{ vars.GCP_PROJECT_ID }}
+          project_id: ${{ env.GCP_PROJECT_ID }}
       - name: Get GKE credentials
         uses: google-github-actions/get-gke-credentials@v2
         with:
-          project_id: ${{ vars.GCP_PROJECT_ID }}
-          cluster_name: ${{ vars.GKE_CLUSTER_NAME_STAGE }}
-          location: ${{ vars.GCP_REGION }}
+          project_id: ${{ env.GCP_PROJECT_ID }}
+          cluster_name: ${{ env.GKE_CLUSTER_NAME_STAGE }}
+          location: ${{ env.REGION }}
       - name: Deploy (Helm)
         run: |
-          helm upgrade --install devops-app k8s/helm/devops-app             --set image.repository=${{ needs.build.outputs.image }}             --set image.tag=${{ github.sha }}             --namespace staging --create-namespace
+          helm upgrade --install devops-app k8s/helm/devops-app \
+            --set image.repository=${{ needs.build.outputs.IMAGE }} \
+            --set image.tag=${GITHUB_SHA} \
+            --namespace staging --create-namespace
+
   deploy-prod:
     needs: deploy-stage
     runs-on: ubuntu-latest
@@ -132,21 +138,23 @@ jobs:
     environment: production
     steps:
       - uses: actions/checkout@v4
-      - name: Authenticate to GCP (OIDC)
-        uses: google-github-actions/auth@v2
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@v1
         with:
-          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
-          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT_EMAIL }}
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
       - name: Configure gcloud
         uses: google-github-actions/setup-gcloud@v2
         with:
-          project_id: ${{ vars.GCP_PROJECT_ID }}
+          project_id: ${{ env.GCP_PROJECT_ID }}
       - name: Get GKE credentials
         uses: google-github-actions/get-gke-credentials@v2
         with:
-          project_id: ${{ vars.GCP_PROJECT_ID }}
-          cluster_name: ${{ vars.GKE_CLUSTER_NAME_PROD }}
-          location: ${{ vars.GCP_REGION }}
+          project_id: ${{ env.GCP_PROJECT_ID }}
+          cluster_name: ${{ env.GKE_CLUSTER_NAME_PROD }}
+          location: ${{ env.REGION }}
       - name: Deploy (Helm)
         run: |
-          helm upgrade --install devops-app k8s/helm/devops-app             --set image.repository=${{ needs.build.outputs.image }}             --set image.tag=${{ github.sha }}             --namespace prod --create-namespace
+          helm upgrade --install devops-app k8s/helm/devops-app \
+            --set image.repository=${{ needs.build.outputs.IMAGE }} \
+            --set image.tag=${GITHUB_SHA} \
+            --namespace prod --create-namespace
