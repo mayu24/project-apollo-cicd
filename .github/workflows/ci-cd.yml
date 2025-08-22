@@ -73,8 +73,6 @@ jobs:
 
       - name: Authenticate to GCP (Docker)
         run: |
-          echo "${{ secrets.GCP_SA_KEY }}" > sa-key.json
-          gcloud auth activate-service-account --key-file=sa-key.json
           gcloud auth configure-docker "${GCP_LOCATION}-docker.pkg.dev"
 
       - name: Run Trivy vulnerability scan
