@@ -1,20 +1,26 @@
-
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: devops-app
+  name: {{ include "devops-app.fullname" . }}
+  labels:
+    app: {{ include "devops-app.name" . }}
 spec:
   replicas: {{ .Values.replicaCount }}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+      maxSurge: 1
   selector:
     matchLabels:
-      app: devops-app
+      app: {{ include "devops-app.name" . }}
   template:
     metadata:
       labels:
-        app: devops-app
+        app: {{ include "devops-app.name" . }}
     spec:
       containers:
-      - name: devops-app
-        image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
-        ports:
-        - containerPort: 8000
+        - name: {{ .Chart.Name }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          ports:
+            - containerPort: {{ .Values.service.targetPort }}
