@@ -52,10 +52,9 @@ jobs:
           echo $AR_REPO
           echo $GCP_LOCATION
          
-
       - name: Docker build
         run: |
-          IMAGE="${{ vars.GCP_LOCATION }}-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/${{ env.AR_REPO }}/devops-app:${{ github.sha }}"
+          IMAGE="$GCP_LOCATION-docker.pkg.dev/$GCP_PROJECT_ID/$AR_REPO/devops-app:${{ github.sha }}"
           docker build -t "$IMAGE" .
           echo "IMAGE=$IMAGE" >> $GITHUB_OUTPUT
         id: set-image
