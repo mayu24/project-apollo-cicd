@@ -1,5 +1,5 @@
 
-project_id = "YOUR_DEV_PROJECT_ID"
+project_id = "durable-rhythm-465310-i5"
 region = "asia-south1"
 location = "asia-south1"
 repo_name = "apps"
