@@ -51,7 +51,7 @@ jobs:
         run: |
           set -eux
           gcloud auth configure-docker ${GCP_LOCATION}-docker.pkg.dev
-          IMAGE="${GCP_LOCATION}-docker.pkg.dev/${GCP_PROJECT_ID}/${AR_REPO}/devops-app:${GITHUB_SHA}"
+          IMAGE="${GCP_LOCATION}-docker.pkg.dev/${GCP_PROJECT_ID}/${AR_REPO}/devops-app:latest"
           docker build -t "$IMAGE" .
           docker push "$IMAGE"
           # extract repo@sha256:... digest
