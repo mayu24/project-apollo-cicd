@@ -7,18 +7,10 @@ name: devops-app
 description: A Helm chart for a simple DevOps application.
 
 # A chart can be either an application or a library chart.
-#
-# Application charts are a collection of templates that can be packaged into
-# a Helm chart to create a runnable application.
-#
-# Library charts provide a set of reusable templates or definitions that can
-# be included in other charts. They will not be installed as a release.
 type: application
 
-# This is the chart version. This version is incremented when you make
-# changes to the chart.
+# This is the chart version.
 version: 0.1.0
 
-# This is the version number of the application being deployed. This is not
-# the chart version.
+# This is the version number of the application being deployed.
 appVersion: "1.16.0"
