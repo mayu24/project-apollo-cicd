@@ -1,14 +1,20 @@
+# templates/service.yaml
+#
+# This file defines the Kubernetes Service for the application.
+# It uses Helm template syntax to make it configurable via the values.yaml file.
+#
 apiVersion: v1
 kind: Service
 metadata:
   name: {{ include "devops-app.fullname" . }}
   labels:
-    app: {{ include "devops-app.name" . }}
+    {{- include "devops-app.labels" . | nindent 4 }}
 spec:
   type: {{ .Values.service.type }}
-  selector:
-    app: {{ include "devops-app.name" . }}
   ports:
     - port: {{ .Values.service.port }}
       targetPort: {{ .Values.service.targetPort }}
       protocol: TCP
+      name: http
+  selector:
+    {{- include "devops-app.selectorLabels" . | nindent 4 }}
