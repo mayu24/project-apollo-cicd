@@ -11,11 +11,9 @@ replicaCount: 3
 image:
   # The repository where your Docker image is stored.
   repository: asia-south1-docker.pkg.dev/durable-rhythm-465310-i5/apps/devops-app
-  # The image tag. This is usually left empty as the CI/CD pipeline
-  # will use the image digest for immutable deployments.
+  # The image tag.
   tag: ""
-  # The image digest is set by the CI/CD pipeline to ensure that the
-  # exact same image is deployed across environments.
+  # The image digest is set by the CI/CD pipeline to ensure immutable deployments.
   digest: ""
 
 # Service configuration to expose your application.
@@ -27,5 +25,14 @@ service:
   # The target port on the container.
   targetPort: 8080
 
-# You can add other configurations here, such as resource limits,
-# environment variables, or ingress rules.
+# Pod annotations.
+podAnnotations: {}
+
+# Node selector.
+nodeSelector: {}
+
+# Affinity.
+affinity: {}
+
+# Tolerations.
+tolerations: {}
