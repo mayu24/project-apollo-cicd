@@ -141,7 +141,7 @@ jobs:
         run: |
           helm upgrade --install devops-app k8s/helm/devops-app \
             --set image.repository="${{ needs.build.outputs.IMAGE }}" \
-            --namespace staging --create-namespace
+            --namespace stage --create-namespace
 
   deploy-prod:
     needs: deploy-stage
