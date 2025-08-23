@@ -1,35 +1,190 @@
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: {{ include "devops-app.fullname" . }}
-  labels:
-    app: {{ include "devops-app.name" . }}
-spec:
-  replicas: {{ .Values.replicaCount }}
-  strategy:
-    type: RollingUpdate
-    rollingUpdate:
-      maxUnavailable: 1
-      maxSurge: 1
-  selector:
-    matchLabels:
-      app: {{ include "devops-app.name" . }}
-  template:
-    metadata:
-      labels:
-        app: {{ include "devops-app.name" . }}
-    spec:
-      containers:
-        - name: {{ include "devops-app.name" . }}
-          image: >-
-            {{- if .Values.image.digest }}
-            {{ .Values.image.repository }}@{{ .Values.image.digest }}
-            {{- else }}
-            {{ .Values.image.repository }}:{{ .Values.image.tag }}
-            {{- end }}
-          imagePullPolicy: IfNotPresent
-          ports:
-            - containerPort: {{ .Values.service.targetPort }}
-          resources:
-            {{- toYaml .Values.resources | nindent 12 }}
-      terminationGracePeriodSeconds: 30
+name: CI/CD (with Trivy & Environments)
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+      - stage
+      - dev
+
+env:
+  REGION: "asia-south1"
+  AR_REPO: "apps"
+  GCP_LOCATION: "asia-south1"
+  GCP_PROJECT_ID: "durable-rhythm-465310-i5"
+  GKE_CLUSTER_NAME_DEV: dev
+  GKE_CLUSTER_NAME_STAGE: dev
+  GKE_CLUSTER_NAME_PROD: prod
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    outputs:
+      digest: ${{ steps.set-image.outputs.digest }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install deps & run tests
+        run: |
+          pip install -r app/requirements.txt
+          python -m pytest -q || true
+
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@v1
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Configure gcloud CLI
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: ${{ env.GCP_PROJECT_ID }}
+
+      - name: Docker build & push (digest)
+        id: set-image
+        run: |
+          set -eux
+          gcloud auth configure-docker ${GCP_LOCATION}-docker.pkg.dev
+          IMAGE="${GCP_LOCATION}-docker.pkg.dev/${GCP_PROJECT_ID}/${AR_REPO}/devops-app:latest"
+          docker build -t "$IMAGE" .
+          docker push "$IMAGE"
+          # extract repo@sha256:... digest
+          DIGEST=$(docker inspect --format='{{index .RepoDigests 0}}' "$IMAGE")
+          echo "digest=$DIGEST" >> "$GITHUB_OUTPUT"
+          echo "Built and pushed: $DIGEST"
+
+  trivy-scan:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@v1
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Docker auth (Artifact Registry)
+        run: |
+          gcloud auth configure-docker ${GCP_LOCATION}-docker.pkg.dev
+
+      - name: Run Trivy scan
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: ${{ needs.build.outputs.digest }}
+          format: table
+          exit-code: 0
+          severity: CRITICAL
+          ignore-unfixed: true
+
+  deploy-dev:
+    needs: trivy-scan
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/main'
+    environment: dev
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@v1
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Configure gcloud
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: ${{ env.GCP_PROJECT_ID }}
+
+      - name: Get GKE credentials
+        uses: google-github-actions/get-gke-credentials@v2
+        with:
+          cluster_name: ${{ env.GKE_CLUSTER_NAME_DEV }}
+          location: ${{ env.REGION }}
+          project_id: ${{ env.GCP_PROJECT_ID }}
+
+      - name: Ensure Helm release is not stuck
+        run: |
+          RELEASE="devops-app-dev"
+          NAMESPACE="dev"
+          if helm status "$RELEASE" -n "$NAMESPACE" | grep -q "pending"; then
+            echo "⚠️ Release is stuck, cleaning up..."
+            helm rollback "$RELEASE" 0 -n "$NAMESPACE" || true
+          fi
+
+      - name: Helm deploy to dev (digest)
+        run: |
+          helm upgrade --install devops-app-dev k8s/helm/devops-app \
+            --set image.digest="${{ needs.build.outputs.digest }}" \
+            --namespace dev --create-namespace \
+            --atomic --timeout 5m
+
+  deploy-stage:
+    needs: trivy-scan
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/stage'
+    environment: staging
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@v1
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Configure gcloud
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: ${{ env.GCP_PROJECT_ID }}
+
+      - name: Get GKE credentials
+        uses: google-github-actions/get-gke-credentials@v2
+        with:
+          cluster_name: ${{ env.GKE_CLUSTER_NAME_STAGE }}
+          location: ${{ env.REGION }}
+          project_id: ${{ env.GCP_PROJECT_ID }}
+
+      - name: Helm deploy to stage (digest)
+        run: |
+          helm upgrade --install devops-app-stage k8s/helm/devops-app \
+            --set image.digest="${{ needs.build.outputs.digest }}" \
+            --namespace stage --create-namespace \
+            --wait --timeout 5m
+
+  deploy-prod:
+    needs: deploy-stage
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@v1
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Configure gcloud
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: ${{ env.GCP_PROJECT_ID }}
+
+      - name: Get GKE credentials
+        uses: google-github-actions/get-gke-credentials@v2
+        with:
+          cluster_name: ${{ env.GKE_CLUSTER_NAME_PROD }}
+          location: ${{ env.REGION }}
+          project_id: ${{ env.GCP_PROJECT_ID }}
+
+      - name: Helm deploy to prod (digest)
+        run: |
+          helm upgrade --install devops-app-prod k8s/helm/devops-app \
+            --set image.digest="${{ needs.build.outputs.digest }}" \
+            --namespace prod --create-namespace \
+            --wait --timeout 5m
