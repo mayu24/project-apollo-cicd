@@ -111,7 +111,7 @@ jobs:
 
       - name: Ensure Helm release is not stuck
         run: |
-          RELEASE="devops-app"
+          RELEASE="devops-app-dev"
           NAMESPACE="dev"
           if helm status "$RELEASE" -n "$NAMESPACE" | grep -q "pending"; then
             echo "⚠️ Release is stuck, cleaning up..."
@@ -120,7 +120,7 @@ jobs:
 
       - name: Helm deploy to dev (digest)
         run: |
-          helm upgrade --install devops-app k8s/helm/devops-app \
+          helm upgrade --install devops-app-dev k8s/helm/devops-app \
             --set image.digest="${{ needs.build.outputs.digest }}" \
             --namespace dev --create-namespace \
             --atomic --timeout 5m
@@ -149,26 +149,10 @@ jobs:
           cluster_name: ${{ env.GKE_CLUSTER_NAME_STAGE }}
           location: ${{ env.REGION }}
           project_id: ${{ env.GCP_PROJECT_ID }}
-          
-      - name: Deploy (Helm rolling upgrade)
-        run: |
-          helm upgrade --install devops-app k8s/helm/devops-app \
-            --set image.repository="${{ needs.build.outputs.IMAGE }}" \
-            --namespace stage --create-namespace
-
-      - name: Ensure Helm release is not stuck
-        run: |
-          RELEASE="devops-app"
-          NAMESPACE="dev"
-          if helm status "$RELEASE" -n "$NAMESPACE" | grep -q "pending"; then
-            echo "⚠️ Release is stuck, cleaning up..."
-            helm rollback "$RELEASE" 0 -n "$NAMESPACE" || true
-          fi
-
 
       - name: Helm deploy to stage (digest)
         run: |
-          helm upgrade --install devops-app k8s/helm/devops-app \
+          helm upgrade --install devops-app-stage k8s/helm/devops-app \
             --set image.digest="${{ needs.build.outputs.digest }}" \
             --namespace stage --create-namespace \
             --wait --timeout 5m
@@ -200,7 +184,7 @@ jobs:
 
       - name: Helm deploy to prod (digest)
         run: |
-          helm upgrade --install devops-app k8s/helm/devops-app \
+          helm upgrade --install devops-app-prod k8s/helm/devops-app \
             --set image.digest="${{ needs.build.outputs.digest }}" \
             --namespace prod --create-namespace \
             --wait --timeout 5m
