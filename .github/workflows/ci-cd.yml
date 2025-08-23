@@ -14,7 +14,7 @@ env:
   GCP_LOCATION: "asia-south1"
   GCP_PROJECT_ID: "durable-rhythm-465310-i5"
   GKE_CLUSTER_NAME_DEV: dev
-  GKE_CLUSTER_NAME_STAGE: stage
+  GKE_CLUSTER_NAME_STAGE: dev
   GKE_CLUSTER_NAME_PROD: prod
 
 jobs:
@@ -149,6 +149,12 @@ jobs:
           cluster_name: ${{ env.GKE_CLUSTER_NAME_STAGE }}
           location: ${{ env.REGION }}
           project_id: ${{ env.GCP_PROJECT_ID }}
+          
+      - name: Deploy (Helm rolling upgrade)
+        run: |
+          helm upgrade --install devops-app k8s/helm/devops-app \
+            --set image.repository="${{ needs.build.outputs.IMAGE }}" \
+            --namespace stage --create-namespace
 
       - name: Ensure Helm release is not stuck
         run: |
