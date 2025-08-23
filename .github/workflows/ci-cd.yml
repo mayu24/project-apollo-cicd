@@ -141,6 +141,16 @@ jobs:
           location: ${{ env.REGION }}
           project_id: ${{ env.GCP_PROJECT_ID }}
 
+      - name: Ensure Helm release is not stuck
+        run: |
+          RELEASE="devops-app"
+          NAMESPACE="dev"
+          if helm status "$RELEASE" -n "$NAMESPACE" | grep -q "pending"; then
+            echo "⚠️ Release is stuck, cleaning up..."
+            helm rollback "$RELEASE" 0 -n "$NAMESPACE" || true
+          fi
+
+
       - name: Helm deploy to stage (digest)
         run: |
           helm upgrade --install devops-app k8s/helm/devops-app \
