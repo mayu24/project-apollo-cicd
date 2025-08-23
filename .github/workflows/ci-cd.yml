@@ -134,7 +134,7 @@ jobs:
       - name: Get GKE credentials
         uses: google-github-actions/get-gke-credentials@v2
         with:
-          cluster_name: ${{ env.GKE_CLUSTER_NAME_STAGE }}
+          cluster_name: dev
           location: ${{ env.REGION }}
           project_id: ${{ env.GCP_PROJECT_ID }}
       - name: Deploy (Helm rolling upgrade)
