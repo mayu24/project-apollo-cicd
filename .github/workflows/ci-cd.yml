@@ -57,7 +57,7 @@ jobs:
           
           # Use a unique tag for the build
           TAG=${GITHUB_SHA::8}
-          IMAGE="${GCP_LOCATION}-docker.pkg.dev/${GCP_PROJECT_ID}/${AR_REPO}/devops-app:${TAG}"
+          IMAGE="${GCP_LOCATION}-docker.pkg.dev/${GCP_PROJECT_ID}/${AR_REPO}/devops-app:latest"
           
           # Also tag with the version if the workflow was triggered by a tag
           if [[ "${{ github.ref }}" == refs/tags/* ]]; then
