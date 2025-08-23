@@ -1,14 +1,32 @@
+# templates/service.yaml
+#
+# This template defines a Kubernetes Service to expose the Deployment.
+# It uses the values from the values.yaml file to set the service type and ports.
+#
+{{- define "devops-app.name" -}}
+{{- .Chart.Name -}}
+{{- end -}}
+
+{{- define "devops-app.fullname" -}}
+{{- printf "%s-%s" .Release.Name .Chart.Name | trunc 63 | trimSuffix "-" -}}
+{{- end -}}
+
 apiVersion: v1
 kind: Service
 metadata:
+  # Using the full name template for consistent naming across all resources.
   name: {{ include "devops-app.fullname" . }}
   labels:
+    # Using the name template for consistent labels.
     app: {{ include "devops-app.name" . }}
 spec:
+  # Use the service type from your values.yaml file.
   type: {{ .Values.service.type }}
-  selector:
-    app: {{ include "devops-app.name" . }}
   ports:
     - port: {{ .Values.service.port }}
       targetPort: {{ .Values.service.targetPort }}
       protocol: TCP
+      name: http
+  selector:
+    # Use the app name template for consistent selectors.
+    app: {{ include "devops-app.name" . }}
