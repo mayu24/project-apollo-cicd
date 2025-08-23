@@ -1,13 +1,14 @@
 name: CI/CD (with Trivy & Environments)
 
 on:
-  push:
-    branches:
-      - main
-      - stage
-      - dev
-  pull_request:
-    branches: [ main ]
+  workflow_dispatch:
+#  push:
+#    branches:
+#      - main
+#      - stage
+#      - dev
+#  pull_request:
+#    branches: [ main ]
 
 env:
   REGION: "asia-south1"
