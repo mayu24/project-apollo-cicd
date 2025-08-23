@@ -1,8 +1,9 @@
 replicaCount: 3
 
 image:
-  fullName: ""   # will be overridden by workflow
-
+  repository: asia-south1-docker.pkg.dev/durable-rhythm-465310-i5/apps/devops-app
+  tag: "latest"   # <-- Set a valid default tag here
+  digest: "" 
 
 service:
   type: LoadBalancer
