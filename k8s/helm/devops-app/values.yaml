@@ -1,11 +1,31 @@
+# values.yaml
+#
+# Default values for devops-app Helm chart.
+# This is a YAML-formatted file.
+# Declare variables to be passed into your templates.
+
+# The number of replicas for your application.
 replicaCount: 3
 
+# Image configuration for the application.
 image:
+  # The repository where your Docker image is stored.
   repository: asia-south1-docker.pkg.dev/durable-rhythm-465310-i5/apps/devops-app
-  tag: ""   # <-- Set a valid default tag here
-  digest: "" 
+  # The image tag. This is usually left empty as the CI/CD pipeline
+  # will use the image digest for immutable deployments.
+  tag: ""
+  # The image digest is set by the CI/CD pipeline to ensure that the
+  # exact same image is deployed across environments.
+  digest: ""
 
+# Service configuration to expose your application.
 service:
+  # The type of service, e.g., ClusterIP, NodePort, LoadBalancer.
   type: LoadBalancer
+  # The port on which the service will be exposed.
   port: 80
+  # The target port on the container.
   targetPort: 8080
+
+# You can add other configurations here, such as resource limits,
+# environment variables, or ingress rules.
