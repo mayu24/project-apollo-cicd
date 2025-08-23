@@ -1,35 +1,60 @@
+# templates/deployment.yaml
+#
+# This file defines the Kubernetes Deployment for the application.
+# It uses Helm template syntax to make it configurable via the values.yaml file.
+#
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: {{ include "devops-app.fullname" . }}
   labels:
-    app: {{ include "devops-app.name" . }}
+    {{- include "devops-app.labels" . | nindent 4 }}
 spec:
   replicas: {{ .Values.replicaCount }}
-  strategy:
-    type: RollingUpdate
-    rollingUpdate:
-      maxUnavailable: 1
-      maxSurge: 1
   selector:
     matchLabels:
-      app: {{ include "devops-app.name" . }}
+      {{- include "devops-app.selectorLabels" . | nindent 6 }}
   template:
     metadata:
+      {{- with .Values.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       labels:
-        app: {{ include "devops-app.name" . }}
+        {{- include "devops-app.selectorLabels" . | nindent 8 }}
     spec:
       containers:
-        - name: {{ include "devops-app.name" . }}
-          image: >-
-            {{- if .Values.image.digest }}
-            {{ .Values.image.repository }}@{{ .Values.image.digest }}
-            {{- else }}
-            {{ .Values.image.repository }}:{{ .Values.image.tag }}
-            {{- end }}
-          imagePullPolicy: IfNotPresent
+        - name: {{ .Chart.Name }}
+          image: "{{ .Values.image.repository }}@{{ .Values.image.digest }}"
+          imagePullPolicy: Always
           ports:
-            - containerPort: {{ .Values.service.targetPort }}
+            - name: http
+              containerPort: {{ .Values.service.targetPort }}
+              protocol: TCP
+          livenessProbe:
+            httpGet:
+              path: /
+              port: http
+          readinessProbe:
+            httpGet:
+              path: /
+              port: http
           resources:
-            {{- toYaml .Values.resources | nindent 12 }}
-      terminationGracePeriodSeconds: 30
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
