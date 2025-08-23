@@ -1,9 +1,9 @@
 replicaCount: 3
 
 image:
-  repository: ""   # optional: default repo (if you use tags). For digests we use image.digest
+  repository: asia-south1-docker.pkg.dev/durable-rhythm-465310-i5/apps/devops-app
   tag: ""
-  digest: ""       # if set, deployment uses this full value: repo@sha256:...
+  digest: "" 
 
 service:
   type: LoadBalancer
