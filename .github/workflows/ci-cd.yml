@@ -116,4 +116,5 @@ jobs:
         run: |
           helm upgrade --install devops-app k8s/helm/devops-app \
             --set image.tag=${{ needs.build.outputs.tag }} \
-            --namespace dev --create-namespace
+            --set image.imagePullPolicy=Always \
+            --namespace dev --create-namespace 
