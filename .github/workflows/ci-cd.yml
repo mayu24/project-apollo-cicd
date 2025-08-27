@@ -1,43 +1,33 @@
-name: CI/CD (with Trivy & Environments)
+name: CI/CD (Trivy + GKE + Versioned Deploy)
 
 on:
   workflow_dispatch:
   push:
     branches:
       - main
-      - stage
       - dev
+      - stage
     tags:
       - 'v*'
 
 env:
   REGION: "asia-south1"
   AR_REPO: "apps"
-  GCP_LOCATION: "asia-south1"
   GCP_PROJECT_ID: "durable-rhythm-465310-i5"
-  GKE_CLUSTER_NAME_DEV: dev
-  GKE_CLUSTER_NAME_STAGE: stage
-  GKE_CLUSTER_NAME_PROD: prod
+  IMAGE_NAME: "devops-app"
+  GKE_CLUSTER_DEV: "dev"
+  GKE_CLUSTER_STAGE: "stage"
+  GKE_CLUSTER_PROD: "prod"
 
 jobs:
   build:
     runs-on: ubuntu-latest
     outputs:
+      tag: ${{ steps.set-tag.outputs.tag }}
       digest: ${{ steps.set-image.outputs.digest }}
-      tag: ${{ steps.set-image.outputs.tag }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-
-      - name: Install deps & run tests
-        run: |
-          pip install -r app/requirements.txt
-          python -m pytest -q || true
 
       - name: Authenticate to GCP
         uses: google-github-actions/auth@v1
@@ -49,31 +39,33 @@ jobs:
         with:
           project_id: ${{ env.GCP_PROJECT_ID }}
 
-      - name: Docker build & push (digest + version)
+      - name: Determine next version
+        id: set-tag
+        run: |
+          gcloud auth configure-docker ${REGION}-docker.pkg.dev
+          EXISTING=$(gcloud artifacts docker images list \
+            ${REGION}-docker.pkg.dev/${GCP_PROJECT_ID}/${AR_REPO}/${IMAGE_NAME} \
+            --format="get(tags)" | tr "," "\n" | grep '^v' | sort -V | tail -1)
+          
+          if [[ -z "$EXISTING" ]]; then
+            NEXT_VERSION="v1"
+          else
+            NUM=${EXISTING#v}
+            NEXT_VERSION="v$((NUM+1))"
+          fi
+          
+          echo "Next version is $NEXT_VERSION"
+          echo "tag=$NEXT_VERSION" >> $GITHUB_OUTPUT
+
+      - name: Docker build & push
         id: set-image
         run: |
-          set -eux
-          gcloud auth configure-docker ${GCP_LOCATION}-docker.pkg.dev
-          
-          # Generate version from GitHub run number (auto-increment)
-          VERSION="v${GITHUB_RUN_NUMBER}"
-          IMAGE="${GCP_LOCATION}-docker.pkg.dev/${GCP_PROJECT_ID}/${AR_REPO}/devops-app"
-
-          # Build and tag with both "latest" and version
-          docker build -t "$IMAGE:latest" -t "$IMAGE:$VERSION" .
-          
-          # Push both tags
+          IMAGE="${REGION}-docker.pkg.dev/${GCP_PROJECT_ID}/${AR_REPO}/${IMAGE_NAME}"
+          docker build -t "$IMAGE:latest" -t "$IMAGE:${{ steps.set-tag.outputs.tag }}" .
           docker push "$IMAGE:latest"
-          docker push "$IMAGE:$VERSION"
-
-          # Export values for later jobs
-          echo "tag=$VERSION" >> "$GITHUB_OUTPUT"
-
-          # Extract repo@sha256:... digest from "latest"
+          docker push "$IMAGE:${{ steps.set-tag.outputs.tag }}"
           DIGEST=$(docker inspect --format='{{index .RepoDigests 0}}' "$IMAGE:latest")
-          echo "digest=$DIGEST" >> "$GITHUB_OUTPUT"
-
-          echo "✅ Built and pushed: $IMAGE:$VERSION"
+          echo "digest=$DIGEST" >> $GITHUB_OUTPUT
 
   trivy-scan:
     needs: build
@@ -87,9 +79,8 @@ jobs:
         with:
           credentials_json: ${{ secrets.GCP_SA_KEY }}
 
-      - name: Docker auth (Artifact Registry)
-        run: |
-          gcloud auth configure-docker ${GCP_LOCATION}-docker.pkg.dev
+      - name: Docker auth
+        run: gcloud auth configure-docker ${REGION}-docker.pkg.dev
 
       - name: Run Trivy scan
         uses: aquasecurity/trivy-action@0.28.0
@@ -101,118 +92,28 @@ jobs:
           ignore-unfixed: true
 
   deploy-dev:
-    needs: trivy-scan
+    needs: [build, trivy-scan]
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/main'
     environment: dev
     steps:
       - uses: actions/checkout@v4
-
       - name: Authenticate to GCP
         uses: google-github-actions/auth@v1
         with:
           credentials_json: ${{ secrets.GCP_SA_KEY }}
-
-      - name: Configure gcloud
+      - name: Setup gcloud
         uses: google-github-actions/setup-gcloud@v2
         with:
           project_id: ${{ env.GCP_PROJECT_ID }}
-
       - name: Get GKE credentials
         uses: google-github-actions/get-gke-credentials@v2
         with:
-          cluster_name: ${{ env.GKE_CLUSTER_NAME_DEV }}
+          cluster_name: ${{ env.GKE_CLUSTER_DEV }}
           location: ${{ env.REGION }}
           project_id: ${{ env.GCP_PROJECT_ID }}
-
-      - name: Ensure Helm release is not stuck
-        run: |
-          RELEASE="devops-app"
-          NAMESPACE="dev"
-          if helm status "$RELEASE" -n "$NAMESPACE" | grep -q "pending"; then
-            echo "⚠️ Release is stuck, cleaning up..."
-            helm rollback "$RELEASE" 0 -n "$NAMESPACE" || true
-          fi
-
-      - name: Helm deploy to dev (digest)
+      - name: Helm deploy to dev
         run: |
           helm upgrade --install devops-app k8s/helm/devops-app \
-            --set image.digest="${{ needs.build.outputs.digest }}" \
-            --set replicaCount=3 \
-            --namespace dev --create-namespace \
-            --atomic --timeout 5m
-
-  deploy-stage:
-    needs: [build, trivy-scan]
-    runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/stage'
-    environment: staging
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Authenticate to GCP
-        uses: google-github-actions/auth@v1
-        with:
-          credentials_json: ${{ secrets.GCP_SA_KEY }}
-
-      - name: Configure gcloud
-        uses: google-github-actions/setup-gcloud@v2
-        with:
-          project_id: ${{ env.GCP_PROJECT_ID }}
-
-      - name: Get GKE credentials
-        uses: google-github-actions/get-gke-credentials@v2
-        with:
-          cluster_name: ${{ env.GKE_CLUSTER_NAME_STAGE }}
-          location: ${{ env.REGION }}
-          project_id: ${{ env.GCP_PROJECT_ID }}
-
-      - name: Ensure Helm release is not stuck
-        run: |
-          RELEASE="devops-app"
-          NAMESPACE="stage"
-          if helm status "$RELEASE" -n "$NAMESPACE" | grep -q "pending"; then
-            echo "⚠️ Release is stuck, cleaning up..."
-            helm rollback "$RELEASE" 0 -n "$NAMESPACE" || true
-          fi
-
-      - name: Helm deploy to stage (tag)
-        run: |
-          helm upgrade --install devops-app k8s/helm/devops-app \
-            --set image.tag="${{ needs.build.outputs.tag }}" \
-            --set replicaCount=3 \
-            --namespace stage --create-namespace \
-            --atomic --timeout 5m
-
-  deploy-prod:
-    needs: [build, trivy-scan, deploy-stage]
-    runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/')
-    environment: production
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Authenticate to GCP
-        uses: google-github-actions/auth@v1
-        with:
-          credentials_json: ${{ secrets.GCP_SA_KEY }}
-
-      - name: Configure gcloud
-        uses: google-github-actions/setup-gcloud@v2
-        with:
-          project_id: ${{ env.GCP_PROJECT_ID }}
-
-      - name: Get GKE credentials
-        uses: google-github-actions/get-gke-credentials@v2
-        with:
-          cluster_name: ${{ env.GKE_CLUSTER_NAME_PROD }}
-          location: ${{ env.REGION }}
-          project_id: ${{ env.GCP_PROJECT_ID }}
-
-      - name: Helm deploy to prod (tag)
-        run: |
-          helm upgrade --install devops-app k8s/helm/devops-app \
-            --set image.tag="${{ needs.build.outputs.tag }}" \
-            --set replicaCount=3 \
-            --namespace prod --create-namespace \
-            --atomic --timeout 5m
+            --set image.tag=${{ needs.build.outputs.tag }} \
+            --wait --timeout 5m
