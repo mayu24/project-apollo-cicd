@@ -1,4 +1,10 @@
 replicaCount: 3
+
+image:
+  repository: asia-south1-docker.pkg.dev/durable-rhythm-465310-i5/apps/devops-app
+  tag: "latest"
+  pullPolicy: IfNotPresent # Change to IfNotPresent, as the tag will be unique
+
 service:
   type: LoadBalancer
   port: 80
