@@ -1,6 +1,9 @@
+# .github/workflows/main.yml
+
 name: CI/CD (Trivy + GKE + Versioned Deploy)
 
 on:
+  # Allows you to run this workflow manually from the Actions tab
   workflow_dispatch:
   push:
     branches:
@@ -18,6 +21,7 @@ env:
   GKE_CLUSTER_DEV: "dev"
   GKE_CLUSTER_STAGE: "stage"
   GKE_CLUSTER_PROD: "prod"
+  HELM_CHART_PATH: k8s/helm/devops-app
 
 jobs:
   build:
@@ -42,6 +46,7 @@ jobs:
       - name: Determine next version
         id: set-tag
         run: |
+          # Use gcloud to find the highest existing version tag and increment it
           gcloud auth configure-docker ${REGION}-docker.pkg.dev
           EXISTING=$(gcloud artifacts docker images list \
             ${REGION}-docker.pkg.dev/${GCP_PROJECT_ID}/${AR_REPO}/${IMAGE_NAME} \
@@ -60,11 +65,12 @@ jobs:
       - name: Docker build & push
         id: set-image
         run: |
+          # Build and push the image with the new version tag
           IMAGE="${REGION}-docker.pkg.dev/${GCP_PROJECT_ID}/${AR_REPO}/${IMAGE_NAME}"
-          docker build -t "$IMAGE:latest" -t "$IMAGE:${{ steps.set-tag.outputs.tag }}" .
-          docker push "$IMAGE:latest"
+          docker build -t "$IMAGE:${{ steps.set-tag.outputs.tag }}" .
           docker push "$IMAGE:${{ steps.set-tag.outputs.tag }}"
-          DIGEST=$(docker inspect --format='{{index .RepoDigests 0}}' "$IMAGE:latest")
+          # Get the digest for Trivy scanning
+          DIGEST=$(docker inspect --format='{{index .RepoDigests 0}}' "$IMAGE:${{ steps.set-tag.outputs.tag }}")
           echo "digest=$DIGEST" >> $GITHUB_OUTPUT
 
   trivy-scan:
@@ -91,6 +97,8 @@ jobs:
           severity: CRITICAL
           ignore-unfixed: true
 
+  # Deploy to Dev environment
+  # Triggered on pushes to 'dev' and 'main' branches
   deploy-dev:
     needs: [build, trivy-scan]
     runs-on: ubuntu-latest
@@ -114,7 +122,69 @@ jobs:
           project_id: ${{ env.GCP_PROJECT_ID }}
       - name: Helm deploy to dev
         run: |
-          helm upgrade --install devops-app k8s/helm/devops-app \
+          helm upgrade --install devops-app ${{ env.HELM_CHART_PATH }} \
             --set image.tag=${{ needs.build.outputs.tag }} \
             --set image.imagePullPolicy=Always \
-            --namespace dev --create-namespace 
+            --namespace dev --create-namespace
+
+  # Deploy to Stage environment
+  # Triggered on pushes to the 'stage' branch, depends on successful dev deployment
+  deploy-stage:
+    needs: [build, trivy-scan, deploy-dev]
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/stage'
+    environment: stage
+    steps:
+      - uses: actions/checkout@v4
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@v1
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+      - name: Setup gcloud
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: ${{ env.GCP_PROJECT_ID }}
+      - name: Get GKE credentials
+        uses: google-github-actions/get-gke-credentials@v2
+        with:
+          cluster_name: ${{ env.GKE_CLUSTER_STAGE }}
+          location: ${{ env.REGION }}
+          project_id: ${{ env.GCP_PROJECT_ID }}
+      - name: Helm deploy to stage
+        run: |
+          helm upgrade --install devops-app ${{ env.HELM_CHART_PATH }} \
+            --set image.tag=${{ needs.build.outputs.tag }} \
+            --set image.imagePullPolicy=Always \
+            --namespace stage --create-namespace
+
+  # Deploy to Production environment
+  # Triggered on new version tags (v*), depends on a successful stage deployment
+  deploy-prod:
+    needs: [build, trivy-scan, deploy-stage]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    environment:
+      name: prod
+      url: https://your-app-prod.com
+    steps:
+      - uses: actions/checkout@v4
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@v1
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+      - name: Setup gcloud
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: ${{ env.GCP_PROJECT_ID }}
+      - name: Get GKE credentials
+        uses: google-github-actions/get-gke-credentials@v2
+        with:
+          cluster_name: ${{ env.GKE_CLUSTER_PROD }}
+          location: ${{ env.REGION }}
+          project_id: ${{ env.GCP_PROJECT_ID }}
+      - name: Helm deploy to prod
+        run: |
+          helm upgrade --install devops-app ${{ env.HELM_CHART_PATH }} \
+            --set image.tag=${{ needs.build.outputs.tag }} \
+            --set image.imagePullPolicy=Always \
+            --namespace prod --create-namespace
