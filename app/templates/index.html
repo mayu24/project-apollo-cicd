@@ -3,15 +3,20 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Python Web GUI:) </title>
+    <title>AI Web App</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
 </head>
 <body>
     <div class="container">
-        <h1>Welcome to Python Web GUI</h1>
-        <p>Status: <span id="status">Unknown</span></p>
-        <button onclick="updateStatus()">Check Status</button>
+        <h1>AI Chat Assistant</h1>
+        
+        <textarea id="userInput" placeholder="Ask me anything..."></textarea>
+        <button onclick="sendMessage()">Send</button>
+        
+        <h3>AI Response:</h3>
+        <p id="aiResponse">Waiting for input...</p>
     </div>
+
     <script src="{{ url_for('static', filename='script.js') }}"></script>
 </body>
 </html>
