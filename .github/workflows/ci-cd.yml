@@ -2,11 +2,6 @@ name: CI/CD (with Trivy & Environments)
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - main
-      - stage
-      - dev
 
 env:
   REGION: "asia-south1"
