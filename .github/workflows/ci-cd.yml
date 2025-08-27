@@ -117,4 +117,3 @@ jobs:
           helm upgrade --install devops-app k8s/helm/devops-app \
             --set image.tag=${{ needs.build.outputs.tag }} \
             --namespace dev --create-namespace
-            --wait --timeout 5m
