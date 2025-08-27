@@ -1,4 +1,5 @@
 name: CI/CD (with Trivy & Environments)
+
 on:
   workflow_dispatch:
   push:
@@ -48,31 +49,31 @@ jobs:
         with:
           project_id: ${{ env.GCP_PROJECT_ID }}
 
-      - name: Docker build & push (digest)
+      - name: Docker build & push (digest + version)
         id: set-image
         run: |
           set -eux
           gcloud auth configure-docker ${GCP_LOCATION}-docker.pkg.dev
           
-          # Use a unique tag for the build
-          TAG=${GITHUB_SHA::8}
-          IMAGE="${GCP_LOCATION}-docker.pkg.dev/${GCP_PROJECT_ID}/${AR_REPO}/devops-app:latest"
+          # Generate version from GitHub run number (auto-increment)
+          VERSION="v${GITHUB_RUN_NUMBER}"
+          IMAGE="${GCP_LOCATION}-docker.pkg.dev/${GCP_PROJECT_ID}/${AR_REPO}/devops-app"
+
+          # Build and tag with both "latest" and version
+          docker build -t "$IMAGE:latest" -t "$IMAGE:$VERSION" .
           
-          # Also tag with the version if the workflow was triggered by a tag
-          if [[ "${{ github.ref }}" == refs/tags/* ]]; then
-            VERSION_TAG="${GITHUB_REF#refs/tags/}"
-            docker build -t "$IMAGE" -t "${GCP_LOCATION}-docker.pkg.dev/${GCP_PROJECT_ID}/${AR_REPO}/devops-app:${VERSION_TAG}" .
-            echo "tag=$VERSION_TAG" >> "$GITHUB_OUTPUT"
-          else
-            docker build -t "$IMAGE" .
-            echo "tag=$TAG" >> "$GITHUB_OUTPUT"
-          fi
-          
-          docker push "$IMAGE"
-          # extract repo@sha256:... digest
-          DIGEST=$(docker inspect --format='{{index .RepoDigests 0}}' "$IMAGE")
+          # Push both tags
+          docker push "$IMAGE:latest"
+          docker push "$IMAGE:$VERSION"
+
+          # Export values for later jobs
+          echo "tag=$VERSION" >> "$GITHUB_OUTPUT"
+
+          # Extract repo@sha256:... digest from "latest"
+          DIGEST=$(docker inspect --format='{{index .RepoDigests 0}}' "$IMAGE:latest")
           echo "digest=$DIGEST" >> "$GITHUB_OUTPUT"
-          echo "Built and pushed: $DIGEST"
+
+          echo "✅ Built and pushed: $IMAGE:$VERSION"
 
   trivy-scan:
     needs: build
@@ -106,20 +107,24 @@ jobs:
     environment: dev
     steps:
       - uses: actions/checkout@v4
+
       - name: Authenticate to GCP
         uses: google-github-actions/auth@v1
         with:
           credentials_json: ${{ secrets.GCP_SA_KEY }}
+
       - name: Configure gcloud
         uses: google-github-actions/setup-gcloud@v2
         with:
           project_id: ${{ env.GCP_PROJECT_ID }}
+
       - name: Get GKE credentials
         uses: google-github-actions/get-gke-credentials@v2
         with:
           cluster_name: ${{ env.GKE_CLUSTER_NAME_DEV }}
           location: ${{ env.REGION }}
           project_id: ${{ env.GCP_PROJECT_ID }}
+
       - name: Ensure Helm release is not stuck
         run: |
           RELEASE="devops-app"
@@ -128,6 +133,7 @@ jobs:
             echo "⚠️ Release is stuck, cleaning up..."
             helm rollback "$RELEASE" 0 -n "$NAMESPACE" || true
           fi
+
       - name: Helm deploy to dev (digest)
         run: |
           helm upgrade --install devops-app k8s/helm/devops-app \
@@ -143,20 +149,24 @@ jobs:
     environment: staging
     steps:
       - uses: actions/checkout@v4
+
       - name: Authenticate to GCP
         uses: google-github-actions/auth@v1
         with:
           credentials_json: ${{ secrets.GCP_SA_KEY }}
+
       - name: Configure gcloud
         uses: google-github-actions/setup-gcloud@v2
         with:
           project_id: ${{ env.GCP_PROJECT_ID }}
+
       - name: Get GKE credentials
         uses: google-github-actions/get-gke-credentials@v2
         with:
           cluster_name: ${{ env.GKE_CLUSTER_NAME_STAGE }}
           location: ${{ env.REGION }}
           project_id: ${{ env.GCP_PROJECT_ID }}
+
       - name: Ensure Helm release is not stuck
         run: |
           RELEASE="devops-app"
@@ -165,13 +175,14 @@ jobs:
             echo "⚠️ Release is stuck, cleaning up..."
             helm rollback "$RELEASE" 0 -n "$NAMESPACE" || true
           fi
+
       - name: Helm deploy to stage (tag)
         run: |
           helm upgrade --install devops-app k8s/helm/devops-app \
             --set image.tag="${{ needs.build.outputs.tag }}" \
             --set replicaCount=3 \
             --namespace stage --create-namespace \
-            --wait --timeout 5m
+            --atomic --timeout 5m
 
   deploy-prod:
     needs: [build, trivy-scan, deploy-stage]
@@ -180,24 +191,28 @@ jobs:
     environment: production
     steps:
       - uses: actions/checkout@v4
+
       - name: Authenticate to GCP
         uses: google-github-actions/auth@v1
         with:
           credentials_json: ${{ secrets.GCP_SA_KEY }}
+
       - name: Configure gcloud
         uses: google-github-actions/setup-gcloud@v2
         with:
           project_id: ${{ env.GCP_PROJECT_ID }}
+
       - name: Get GKE credentials
         uses: google-github-actions/get-gke-credentials@v2
         with:
           cluster_name: ${{ env.GKE_CLUSTER_NAME_PROD }}
           location: ${{ env.REGION }}
           project_id: ${{ env.GCP_PROJECT_ID }}
+
       - name: Helm deploy to prod (tag)
         run: |
           helm upgrade --install devops-app k8s/helm/devops-app \
             --set image.tag="${{ needs.build.outputs.tag }}" \
             --set replicaCount=3 \
             --namespace prod --create-namespace \
-            --wait --timeout 5m
+            --atomic --timeout 5m
