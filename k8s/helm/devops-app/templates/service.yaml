@@ -1,8 +1,3 @@
-# templates/service.yaml
-#
-# This file defines the Kubernetes Service for the application.
-# It uses Helm template syntax to make it configurable via the values.yaml file.
-#
 apiVersion: v1
 kind: Service
 metadata:
